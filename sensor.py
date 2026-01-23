@@ -1,20 +1,186 @@
 """Sensor platform for DailyConnect integration."""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import DailyConnectDataUpdateCoordinator
 from .const import DOMAIN
+
+
+@dataclass(frozen=True)
+class DailyConnectSensorEntityDescription(SensorEntityDescription):
+    """Describes DailyConnect sensor entity."""
+
+    value_fn: Callable[[dict[str, Any]], StateType] | None = None
+    attributes_fn: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
+    icon_fn: Callable[[dict[str, Any]], str] | None = None
+
+
+# Sleep sensors
+SLEEP_SENSORS = [
+    DailyConnectSensorEntityDescription(
+        key="sleep_status",
+        translation_key="sleep_status",
+        name="Sleep Status",
+        icon="mdi:sleep",
+        value_fn=lambda data: (
+            "sleeping"
+            if data.get("summary", {}).get("summary", {}).get("isSleeping", False)
+            else "awake"
+        ),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="sleep_count",
+        translation_key="sleep_count",
+        name="Sleep Count",
+        icon="mdi:counter",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="naps",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfSleep", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="sleep_duration",
+        translation_key="sleep_duration",
+        name="Sleep Duration",
+        icon="mdi:clock",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="min",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("totalSleepDuration", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_sleep",
+        translation_key="last_sleep",
+        name="Last Sleep",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastSleeping"),
+    ),
+]
+
+# Feeding sensors
+FEEDING_SENSORS = [
+    DailyConnectSensorEntityDescription(
+        key="bottle_count",
+        translation_key="bottle_count",
+        name="Bottle Count",
+        icon="mdi:baby-bottle",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="bottles",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfBottle", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="bottle_volume",
+        translation_key="bottle_volume",
+        name="Bottle Volume",
+        icon="mdi:baby-bottle-outline",
+        device_class=SensorDeviceClass.VOLUME,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="oz",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("totalBottleSize", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_bottle",
+        translation_key="last_bottle",
+        name="Last Bottle",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastBottle"),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_food",
+        translation_key="last_food",
+        name="Last Food",
+        icon="mdi:food",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastFood"),
+    ),
+]
+
+# Diaper sensors
+DIAPER_SENSORS = [
+    DailyConnectSensorEntityDescription(
+        key="diaper_count",
+        translation_key="diaper_count",
+        name="Diaper Count",
+        icon="mdi:baby",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="diapers",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfDiapers", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="wet_diapers",
+        translation_key="wet_diapers",
+        name="Wet Diapers",
+        icon="mdi:water",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="diapers",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfWetDiapers", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="bm_diapers",
+        translation_key="bm_diapers",
+        name="BM Diapers",
+        icon="mdi:baby",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="diapers",
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfBMDiapers", 0),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_diaper",
+        translation_key="last_diaper",
+        name="Last Diaper",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastDiaper"),
+    ),
+]
+
+# Activity sensor
+ACTIVITY_SENSOR = DailyConnectSensorEntityDescription(
+    key="activities",
+    translation_key="activities",
+    name="Activities",
+    icon="mdi:calendar-today",
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement="activities",
+    value_fn=lambda data: len(data.get("status", {}).get("list", [])),
+    attributes_fn=lambda data: {
+        "recent_activities": [
+            {
+                "time": activity.get("Utm", ""),
+                "description": activity.get("Txt", ""),
+                "category": activity.get("Cat", ""),
+                "photo_id": activity.get("Photo") if activity.get("Cat") == 1000 else None,
+            }
+            for activity in data.get("status", {}).get("list", [])[-5:]
+        ]
+    }
+    if data.get("status", {}).get("list")
+    else None,
+)
+
+# All kid sensors
+KID_SENSORS = [
+    *SLEEP_SENSORS,
+    *FEEDING_SENSORS,
+    *DIAPER_SENSORS,
+    ACTIVITY_SENSOR,
+]
 
 
 async def async_setup_entry(
@@ -23,63 +189,47 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up DailyConnect sensors from a config entry."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: DailyConnectDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    entities = []
+    entities: list[SensorEntity] = []
 
     if coordinator.data and "kids" in coordinator.data:
         for kid_id, kid_data in coordinator.data["kids"].items():
             kid_name = kid_data["name"]
 
-            # Create individual sensors for each data type
-            entities.extend([
-                # Sleep sensors
-                DailyConnectSleepStatusSensor(coordinator, kid_id, kid_name),
-                DailyConnectSleepCountSensor(coordinator, kid_id, kid_name),
-                DailyConnectSleepDurationSensor(coordinator, kid_id, kid_name),
-                DailyConnectLastSleepSensor(coordinator, kid_id, kid_name),
-
-                # Feeding sensors
-                DailyConnectBottleCountSensor(coordinator, kid_id, kid_name),
-                DailyConnectBottleVolumeSensor(coordinator, kid_id, kid_name),
-                DailyConnectLastBottleSensor(coordinator, kid_id, kid_name),
-                DailyConnectLastFoodSensor(coordinator, kid_id, kid_name),
-
-                # Diaper sensors
-                DailyConnectDiaperCountSensor(coordinator, kid_id, kid_name),
-                DailyConnectWetDiaperCountSensor(coordinator, kid_id, kid_name),
-                DailyConnectBMDiaperCountSensor(coordinator, kid_id, kid_name),
-                DailyConnectLastDiaperSensor(coordinator, kid_id, kid_name),
-
-                # Activity sensor (status)
-                DailyConnectActivitySensor(coordinator, kid_id, kid_name),
-            ])
-
-        # Add calendar sensor (one per account, not per kid)
-        entities.append(DailyConnectCalendarSensor(coordinator))
+            # Create sensors for this kid
+            for description in KID_SENSORS:
+                entities.append(
+                    DailyConnectKidSensor(
+                        coordinator,
+                        description,
+                        kid_id,
+                        kid_name,
+                    )
+                )
 
     async_add_entities(entities)
 
 
-class DailyConnectBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base class for DailyConnect sensors."""
+class DailyConnectKidSensor(CoordinatorEntity, SensorEntity):
+    """Represents a DailyConnect kid sensor."""
+
+    entity_description: DailyConnectSensorEntityDescription
 
     def __init__(
         self,
         coordinator: DailyConnectDataUpdateCoordinator,
+        description: DailyConnectSensorEntityDescription,
         kid_id: str,
         kid_name: str,
-        sensor_type: str,
-        icon: str = "mdi:account-child",
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self.entity_description = description
         self._kid_id = kid_id
         self._kid_name = kid_name
-        self._sensor_type = sensor_type
-        self._attr_name = f"{kid_name} {sensor_type}"
-        self._attr_unique_id = f"{DOMAIN}_{kid_id}_{sensor_type.lower().replace(' ', '_')}"
-        self._attr_icon = icon
+        self._attr_name = f"{kid_name} {description.name}"
+        self._attr_unique_id = f"{DOMAIN}_{kid_id}_{description.key}"
 
     @property
     def device_info(self) -> dict[str, Any]:
@@ -101,7 +251,7 @@ class DailyConnectBaseSensor(CoordinatorEntity, SensorEntity):
             and self._kid_id in self.coordinator.data["kids"]
         )
 
-    def _get_kid_data(self) -> dict | None:
+    def _get_kid_data(self) -> dict[str, Any] | None:
         """Get kid data from coordinator."""
         if (
             not self.coordinator.data
@@ -111,314 +261,34 @@ class DailyConnectBaseSensor(CoordinatorEntity, SensorEntity):
             return None
         return self.coordinator.data["kids"][self._kid_id]
 
-    def get_summary_data(self):
-        """Get summary data for the kid."""
+    @property
+    def native_value(self) -> StateType:
+        """Return the state of the sensor."""
         kid_data = self._get_kid_data()
         if not kid_data:
             return None
 
-        summary_data = kid_data.get("summary")
-        if summary_data and isinstance(summary_data, dict) and "summary" in summary_data:
-            return summary_data["summary"]
-        return None
-
-
-# Sleep Sensors
-class DailyConnectSleepStatusSensor(DailyConnectBaseSensor):
-    """Sleep status sensor."""
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Sleep Status", "mdi:sleep")
-
-    @property
-    def state(self) -> str | None:
-        summary = self.get_summary_data()
-        if summary:
-            return "sleeping" if summary.get("isSleeping", False) else "awake"
-        return "unknown"
-
-
-class DailyConnectSleepCountSensor(DailyConnectBaseSensor):
-    """Sleep count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Sleep Count", "mdi:counter")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("nrOfSleep", 0) if summary else None
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "naps"
-
-
-class DailyConnectSleepDurationSensor(DailyConnectBaseSensor):
-    """Sleep duration sensor."""
-
-    _attr_device_class = SensorDeviceClass.DURATION
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-    _attr_native_unit_of_measurement = "min"
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Sleep Duration", "mdi:clock")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("totalSleepDuration", 0) if summary else None
-
-
-class DailyConnectLastSleepSensor(DailyConnectBaseSensor):
-    """Last sleep time sensor."""
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Last Sleep", "mdi:clock-outline")
-
-    @property
-    def state(self) -> str | None:
-        summary = self.get_summary_data()
-        return summary.get("timeOfLastSleeping") if summary else None
-
-
-# Feeding Sensors
-class DailyConnectBottleCountSensor(DailyConnectBaseSensor):
-    """Bottle count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Bottle Count", "mdi:baby-bottle")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("nrOfBottle", 0) if summary else None
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "bottles"
-
-
-class DailyConnectBottleVolumeSensor(DailyConnectBaseSensor):
-    """Bottle volume sensor."""
-
-    _attr_device_class = SensorDeviceClass.VOLUME
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-    _attr_native_unit_of_measurement = "oz"
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Bottle Volume", "mdi:baby-bottle-outline")
-
-    @property
-    def state(self) -> float | None:
-        summary = self.get_summary_data()
-        return summary.get("totalBottleSize", 0) if summary else None
-
-
-class DailyConnectLastBottleSensor(DailyConnectBaseSensor):
-    """Last bottle time sensor."""
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Last Bottle", "mdi:clock-outline")
-
-    @property
-    def state(self) -> str | None:
-        summary = self.get_summary_data()
-        return summary.get("timeOfLastBottle") if summary else None
-
-
-class DailyConnectLastFoodSensor(DailyConnectBaseSensor):
-    """Last food time sensor."""
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Last Food", "mdi:food")
-
-    @property
-    def state(self) -> str | None:
-        summary = self.get_summary_data()
-        return summary.get("timeOfLastFood") if summary else None
-
-
-# Diaper Sensors
-class DailyConnectDiaperCountSensor(DailyConnectBaseSensor):
-    """Total diaper count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Diaper Count", "mdi:baby")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("nrOfDiapers", 0) if summary else None
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "diapers"
-
-
-class DailyConnectWetDiaperCountSensor(DailyConnectBaseSensor):
-    """Wet diaper count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Wet Diapers", "mdi:water")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("nrOfWetDiapers", 0) if summary else None
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "diapers"
-
-
-class DailyConnectBMDiaperCountSensor(DailyConnectBaseSensor):
-    """BM diaper count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "BM Diapers", "mdi:baby")
-
-    @property
-    def state(self) -> int | None:
-        summary = self.get_summary_data()
-        return summary.get("nrOfBMDiapers", 0) if summary else None
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "diapers"
-
-
-class DailyConnectLastDiaperSensor(DailyConnectBaseSensor):
-    """Last diaper time sensor."""
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Last Diaper", "mdi:clock-outline")
-
-    @property
-    def state(self) -> str | None:
-        summary = self.get_summary_data()
-        return summary.get("timeOfLastDiaper") if summary else None
-
-
-# Activity Sensor
-class DailyConnectActivitySensor(DailyConnectBaseSensor):
-    """Activity count sensor."""
-
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    def __init__(self, coordinator, kid_id, kid_name):
-        super().__init__(coordinator, kid_id, kid_name, "Activities", "mdi:calendar-today")
-
-    @property
-    def state(self) -> int | None:
-        kid_data = self._get_kid_data()
-        if not kid_data:
-            return None
-
-        status_data = kid_data.get("status")
-        if status_data and isinstance(status_data, dict):
-            activities = status_data.get("list", [])
-            return len(activities)
-        return 0
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "activities"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        kid_data = self._get_kid_data()
-        if not kid_data:
-            return None
-
-        status_data = kid_data.get("status")
-        if status_data and isinstance(status_data, dict):
-            activities = status_data.get("list", [])
-
-            # Get recent activities (last 5)
-            recent_activities = []
-            for activity in activities[-5:]:
-                activity_info = {
-                    "time": activity.get("Utm", ""),
-                    "description": activity.get("Txt", ""),
-                    "category": activity.get("Cat", ""),
-                }
-                recent_activities.append(activity_info)
-
-            return {"recent_activities": recent_activities} if recent_activities else None
+        if self.entity_description.value_fn:
+            return self.entity_description.value_fn(kid_data)
 
         return None
 
-
-# Calendar Sensor
-class DailyConnectCalendarSensor(CoordinatorEntity, SensorEntity):
-    """Calendar events sensor."""
-
-    _attr_icon = "mdi:calendar-star"
-
-    def __init__(self, coordinator: DailyConnectDataUpdateCoordinator) -> None:
-        """Initialize the calendar sensor."""
-        super().__init__(coordinator)
-        self._attr_name = "DailyConnect Calendar"
-        self._attr_unique_id = f"{DOMAIN}_calendar"
-
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-        )
-
-    @property
-    def state(self) -> int:
-        """Return the number of upcoming events."""
-        if not self.coordinator.data:
-            return 0
-        events = self.coordinator.data.get("calendar", [])
-        return len(events)
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "events"
+    def icon(self) -> str | None:
+        """Return the icon of the sensor."""
+        kid_data = self._get_kid_data()
+        if kid_data and self.entity_description.icon_fn:
+            return self.entity_description.icon_fn(kid_data)
+        return self.entity_description.icon
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return upcoming events as attributes."""
-        if not self.coordinator.data:
+        """Return extra state attributes."""
+        kid_data = self._get_kid_data()
+        if not kid_data:
             return None
 
-        events = self.coordinator.data.get("calendar", [])
-        if not events:
-            return {"upcoming_events": []}
+        if self.entity_description.attributes_fn:
+            return self.entity_description.attributes_fn(kid_data)
 
-        # Format events for display (limit to next 10)
-        upcoming = []
-        for event in events[:10]:
-            event_info = {
-                "title": event.get("title", ""),
-                "start": event.get("start", ""),
-                "end": event.get("end", ""),
-                "all_day": event.get("allDay", False),
-            }
-            upcoming.append(event_info)
-
-        return {"upcoming_events": upcoming}
+        return None
