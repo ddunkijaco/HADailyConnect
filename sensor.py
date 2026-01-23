@@ -24,13 +24,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up DailyConnect sensors from a config entry."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
+
     entities = []
-    
-    if coordinator.data:
-        for kid_id, kid_data in coordinator.data.items():
+
+    if coordinator.data and "kids" in coordinator.data:
+        for kid_id, kid_data in coordinator.data["kids"].items():
             kid_name = kid_data["name"]
-            
+
             # Create individual sensors for each data type
             entities.extend([
                 # Sleep sensors
@@ -38,23 +38,26 @@ async def async_setup_entry(
                 DailyConnectSleepCountSensor(coordinator, kid_id, kid_name),
                 DailyConnectSleepDurationSensor(coordinator, kid_id, kid_name),
                 DailyConnectLastSleepSensor(coordinator, kid_id, kid_name),
-                
+
                 # Feeding sensors
                 DailyConnectBottleCountSensor(coordinator, kid_id, kid_name),
                 DailyConnectBottleVolumeSensor(coordinator, kid_id, kid_name),
                 DailyConnectLastBottleSensor(coordinator, kid_id, kid_name),
                 DailyConnectLastFoodSensor(coordinator, kid_id, kid_name),
-                
+
                 # Diaper sensors
                 DailyConnectDiaperCountSensor(coordinator, kid_id, kid_name),
                 DailyConnectWetDiaperCountSensor(coordinator, kid_id, kid_name),
                 DailyConnectBMDiaperCountSensor(coordinator, kid_id, kid_name),
                 DailyConnectLastDiaperSensor(coordinator, kid_id, kid_name),
-                
+
                 # Activity sensor (status)
                 DailyConnectActivitySensor(coordinator, kid_id, kid_name),
             ])
-    
+
+        # Add calendar sensor (one per account, not per kid)
+        entities.append(DailyConnectCalendarSensor(coordinator))
+
     async_add_entities(entities)
 
 
@@ -94,15 +97,27 @@ class DailyConnectBaseSensor(CoordinatorEntity, SensorEntity):
         return (
             self.coordinator.last_update_success
             and self.coordinator.data is not None
-            and self._kid_id in self.coordinator.data
+            and "kids" in self.coordinator.data
+            and self._kid_id in self.coordinator.data["kids"]
         )
+
+    def _get_kid_data(self) -> dict | None:
+        """Get kid data from coordinator."""
+        if (
+            not self.coordinator.data
+            or "kids" not in self.coordinator.data
+            or self._kid_id not in self.coordinator.data["kids"]
+        ):
+            return None
+        return self.coordinator.data["kids"][self._kid_id]
 
     def get_summary_data(self):
         """Get summary data for the kid."""
-        if not self.coordinator.data or self._kid_id not in self.coordinator.data:
+        kid_data = self._get_kid_data()
+        if not kid_data:
             return None
-        
-        summary_data = self.coordinator.data[self._kid_id].get("summary")
+
+        summary_data = kid_data.get("summary")
         if summary_data and isinstance(summary_data, dict) and "summary" in summary_data:
             return summary_data["summary"]
         return None
@@ -314,10 +329,11 @@ class DailyConnectActivitySensor(DailyConnectBaseSensor):
 
     @property
     def state(self) -> int | None:
-        if not self.coordinator.data or self._kid_id not in self.coordinator.data:
+        kid_data = self._get_kid_data()
+        if not kid_data:
             return None
 
-        status_data = self.coordinator.data[self._kid_id].get("status")
+        status_data = kid_data.get("status")
         if status_data and isinstance(status_data, dict):
             activities = status_data.get("list", [])
             return len(activities)
@@ -329,13 +345,14 @@ class DailyConnectActivitySensor(DailyConnectBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        if not self.coordinator.data or self._kid_id not in self.coordinator.data:
+        kid_data = self._get_kid_data()
+        if not kid_data:
             return None
-        
-        status_data = self.coordinator.data[self._kid_id].get("status")
+
+        status_data = kid_data.get("status")
         if status_data and isinstance(status_data, dict):
             activities = status_data.get("list", [])
-            
+
             # Get recent activities (last 5)
             recent_activities = []
             for activity in activities[-5:]:
@@ -345,7 +362,63 @@ class DailyConnectActivitySensor(DailyConnectBaseSensor):
                     "category": activity.get("Cat", ""),
                 }
                 recent_activities.append(activity_info)
-            
+
             return {"recent_activities": recent_activities} if recent_activities else None
-        
+
         return None
+
+
+# Calendar Sensor
+class DailyConnectCalendarSensor(CoordinatorEntity, SensorEntity):
+    """Calendar events sensor."""
+
+    _attr_icon = "mdi:calendar-star"
+
+    def __init__(self, coordinator: DailyConnectDataUpdateCoordinator) -> None:
+        """Initialize the calendar sensor."""
+        super().__init__(coordinator)
+        self._attr_name = "DailyConnect Calendar"
+        self._attr_unique_id = f"{DOMAIN}_calendar"
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+        )
+
+    @property
+    def state(self) -> int:
+        """Return the number of upcoming events."""
+        if not self.coordinator.data:
+            return 0
+        events = self.coordinator.data.get("calendar", [])
+        return len(events)
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return "events"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return upcoming events as attributes."""
+        if not self.coordinator.data:
+            return None
+
+        events = self.coordinator.data.get("calendar", [])
+        if not events:
+            return {"upcoming_events": []}
+
+        # Format events for display (limit to next 10)
+        upcoming = []
+        for event in events[:10]:
+            event_info = {
+                "title": event.get("title", ""),
+                "start": event.get("start", ""),
+                "end": event.get("end", ""),
+                "all_day": event.get("allDay", False),
+            }
+            upcoming.append(event_info)
+
+        return {"upcoming_events": upcoming}

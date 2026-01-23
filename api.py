@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import aiohttp
@@ -180,4 +180,44 @@ class DailyConnectAPI:
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Failed to get kid status: %s", err)
+            return None
+
+    async def get_calendar_events(
+        self, user_id: str, days_ahead: int = 30
+    ) -> list | None:
+        """Get calendar events for the next N days."""
+        if not self._srf_token:
+            raise ValueError("Not authenticated")
+
+        now = datetime.now(timezone.utc)
+        start_date = now.strftime("%y%m%d")
+        end_date = (now + timedelta(days=days_ahead)).strftime("%y%m%d")
+
+        data = (
+            f"command=getEvents&start={start_date}&end={end_date}"
+            f"&parent=true&uid={user_id}&__srf_token__={self._srf_token}"
+        )
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT)
+        _LOGGER.debug("Calendar request data: %s", data)
+
+        try:
+            async with self._session.post(
+                f"{BASE_URL}/CmdW?cmd=CalendarCmd",
+                data=data,
+                headers={
+                    **self._headers,
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+                },
+                timeout=timeout,
+            ) as response:
+                if response.status == 200:
+                    result = await response.json(content_type=None)
+                    _LOGGER.debug("Calendar events: %s", result)
+                    return result if isinstance(result, list) else []
+                else:
+                    _LOGGER.error("Error retrieving calendar. Status: %s", response.status)
+                    return None
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Failed to get calendar events: %s", err)
             return None

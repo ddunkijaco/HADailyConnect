@@ -138,7 +138,17 @@ class DailyConnectDataUpdateCoordinator(DataUpdateCoordinator):
             for kid_id, data in results:
                 kids_data[kid_id] = data
 
-            return kids_data
+            # Fetch calendar events (use user ID from user_info)
+            user_id = user_info.get("Id", "")
+            calendar_events = []
+            if user_id:
+                calendar_events = await self.api.get_calendar_events(user_id) or []
+
+            return {
+                "kids": kids_data,
+                "calendar": calendar_events,
+                "user_id": user_id,
+            }
 
         except ConfigEntryAuthFailed:
             raise
