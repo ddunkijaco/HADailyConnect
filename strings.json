@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DailyConnect Setup",
+        "description": "Enter your DailyConnect credentials",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate DailyConnect",
+        "description": "Please enter your new password for {email}",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password",
+      "cannot_connect": "Failed to connect to DailyConnect",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "DailyConnect is already configured for this email",
+      "reauth_successful": "Reauthentication successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "DailyConnect Options",
+        "description": "Configure DailyConnect settings",
+        "data": {
+          "update_interval": "Update interval (minutes)"
+        }
+      }
+    }
+  }
+}

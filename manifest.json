@@ -1,0 +1,13 @@
+{
+  "domain": "dailyconnect",
+  "name": "DailyConnect",
+  "codeowners": ["@ddunkijaco"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/ddunkijaco/HADailyConnect",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ddunkijaco/HADailyConnect/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
+}
