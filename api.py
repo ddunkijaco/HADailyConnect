@@ -1,9 +1,11 @@
 """API client for DailyConnect."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Any, Callable
 from urllib.parse import quote
 
 import aiohttp
@@ -11,6 +13,53 @@ import aiohttp
 from .const import API_TIMEOUT, BASE_URL
 
 _LOGGER = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAYS = [2, 4, 8]  # Exponential backoff in seconds
+
+
+async def _retry_with_backoff(
+    func: Callable,
+    *args: Any,
+    max_retries: int = MAX_RETRIES,
+    **kwargs: Any
+) -> Any:
+    """Retry a function with exponential backoff.
+
+    Args:
+        func: The async function to retry
+        *args: Positional arguments for the function
+        max_retries: Maximum number of retry attempts
+        **kwargs: Keyword arguments for the function
+
+    Returns:
+        The result of the function call
+
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            last_exception = err
+            if attempt < max_retries:
+                delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]
+                _LOGGER.warning(
+                    "API call failed (attempt %d/%d): %s. Retrying in %ds...",
+                    attempt + 1,
+                    max_retries + 1,
+                    err,
+                    delay
+                )
+                await asyncio.sleep(delay)
+            else:
+                _LOGGER.error("API call failed after %d attempts: %s", max_retries + 1, err)
+
+    raise last_exception
 
 
 class DailyConnectAPI:
@@ -51,29 +100,37 @@ class DailyConnectAPI:
                 timeout=timeout,
             ) as response:
                 content = await response.text()
-                
+
                 # Extract the CSRF token from the response
                 # Flatten the content to ensure regex matching works
                 content = content.replace('\r\n', ' ')
                 match = re.search(r"var\s+__srf_token__\s*=\s*'([^']+)'", content)
-                
+
                 if match:
                     self._srf_token = match.group(1)
                     _LOGGER.debug("Extracted token: %s", self._srf_token)
                 else:
-                    _LOGGER.error("Token not found in authentication response")
+                    _LOGGER.error(
+                        "Token not found in authentication response. "
+                        "DailyConnect may have changed their login page format. "
+                        "Response preview: %s",
+                        content[:200]
+                    )
                     return False
-                
+
                 # Accept either 302 or 200 as success
                 if response.status in (200, 302):
                     _LOGGER.debug("Login successful (Status: %s)", response.status)
                     return True
                 else:
-                    _LOGGER.error("Login failed with status: %s", response.status)
+                    _LOGGER.error("Login failed with status: %s, response: %s", response.status, content[:200])
                     return False
 
         except aiohttp.ClientError as err:
-            _LOGGER.error("Authentication failed: %s", err)
+            _LOGGER.error("Authentication failed due to network error: %s", err)
+            return False
+        except Exception as err:
+            _LOGGER.exception("Unexpected error during authentication: %s", err)
             return False
 
     async def get_user_info(self) -> dict | None:
@@ -97,12 +154,19 @@ class DailyConnectAPI:
                 if response.status == 200:
                     content = await response.text()
                     _LOGGER.debug("User info response: %s", content[:500])  # Log first 500 chars
-                    return await response.json(content_type=None)
+                    result = await response.json(content_type=None)
+
+                    # Validate response structure
+                    if not isinstance(result, dict):
+                        _LOGGER.error("User info response is not a dict: %s", type(result))
+                        return None
+
+                    return result
                 else:
                     _LOGGER.error("Error retrieving user info. Status: %s", response.status)
                     return None
 
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, ValueError) as err:
             _LOGGER.error("Failed to get user info: %s", err)
             return None
 
@@ -135,12 +199,18 @@ class DailyConnectAPI:
                     _LOGGER.debug("Kid summary response for %s: %s", kid_id, content[:500])
                     result = await response.json(content_type=None)
                     _LOGGER.debug("Kid summary parsed for %s: %s", kid_id, result)
+
+                    # Validate response structure
+                    if not isinstance(result, dict):
+                        _LOGGER.error("Kid summary response is not a dict for %s: %s", kid_id, type(result))
+                        return None
+
                     return result
                 else:
                     _LOGGER.error("Error retrieving kid summary. Status: %s", response.status)
                     return None
 
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, ValueError) as err:
             _LOGGER.error("Failed to get kid summary: %s", err)
             return None
 
@@ -173,12 +243,18 @@ class DailyConnectAPI:
                     _LOGGER.debug("Kid status response for %s: %s", kid_id, content[:500])
                     result = await response.json(content_type=None)
                     _LOGGER.debug("Kid status parsed for %s: %s", kid_id, result)
+
+                    # Validate response structure
+                    if not isinstance(result, dict):
+                        _LOGGER.error("Kid status response is not a dict for %s: %s", kid_id, type(result))
+                        return None
+
                     return result
                 else:
                     _LOGGER.error("Error retrieving kid status. Status: %s", response.status)
                     return None
 
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, ValueError) as err:
             _LOGGER.error("Failed to get kid status: %s", err)
             return None
 
@@ -213,11 +289,56 @@ class DailyConnectAPI:
                 if response.status == 200:
                     result = await response.json(content_type=None)
                     _LOGGER.debug("Calendar events: %s", result)
-                    return result if isinstance(result, list) else []
+
+                    # Validate response structure
+                    if not isinstance(result, list):
+                        _LOGGER.warning("Calendar events response is not a list: %s, returning empty list", type(result))
+                        return []
+
+                    return result
                 else:
                     _LOGGER.error("Error retrieving calendar. Status: %s", response.status)
                     return None
 
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, ValueError) as err:
             _LOGGER.error("Failed to get calendar events: %s", err)
+            return None
+
+    async def get_photo(self, photo_id: str, thumbnail: bool = False) -> bytes | None:
+        """Get a photo by ID.
+
+        Args:
+            photo_id: The photo ID from activity data
+            thumbnail: If True, fetch thumbnail (0=full size, 1=thumbnail)
+
+        Returns:
+            Binary photo data or None if failed
+        """
+        if not self._srf_token:
+            raise ValueError("Not authenticated")
+
+        thumb_param = 1 if thumbnail else 0
+        timeout = aiohttp.ClientTimeout(total=API_TIMEOUT)
+
+        try:
+            async with self._session.get(
+                f"{BASE_URL}/GetCmd",
+                params={
+                    "cmd": "PhotoGet",
+                    "id": photo_id,
+                    "thumb": thumb_param,
+                },
+                headers=self._headers,
+                timeout=timeout,
+            ) as response:
+                if response.status == 200:
+                    photo_data = await response.read()
+                    _LOGGER.debug("Retrieved photo %s, size: %d bytes", photo_id, len(photo_data))
+                    return photo_data
+                else:
+                    _LOGGER.error("Error retrieving photo %s. Status: %s", photo_id, response.status)
+                    return None
+
+        except (aiohttp.ClientError, ValueError) as err:
+            _LOGGER.error("Failed to get photo %s: %s", photo_id, err)
             return None

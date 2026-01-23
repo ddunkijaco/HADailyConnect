@@ -7,9 +7,14 @@ A Home Assistant custom integration to track your child's daycare activities fro
 ## Features
 
 - **Sleep Tracking**: Sleep status, count, duration, and last sleep time
+- **Binary Sleep Sensor**: Visual on/off indicator when your child is sleeping
 - **Feeding Tracking**: Bottle count, volume, last bottle, and last food time
 - **Diaper Tracking**: Total diapers, wet diapers, BM diapers, and last diaper time
-- **Activity Feed**: Recent activities from the daycare
+- **Activity Feed**: Recent activities from the daycare with photo support
+- **Photo Display**: View the latest activity photo for each child
+- **Calendar Integration**: Native Home Assistant calendar showing upcoming daycare events
+- **Diagnostics**: Built-in diagnostics for easier troubleshooting
+- **Robust Error Handling**: Automatic retry with exponential backoff for network issues
 
 ## Installation
 
@@ -60,6 +65,24 @@ For each child, the following sensors are created:
 | BM Diapers | BM diaper count today | diapers |
 | Last Diaper | Time of last diaper change | timestamp |
 | Activities | Number of activities today | activities |
+
+### Binary Sensors
+
+| Sensor | Description |
+|--------|-------------|
+| Sleeping | On when child is sleeping, off when awake |
+
+### Calendar
+
+The integration provides a DailyConnect Calendar entity that shows upcoming daycare events in the native Home Assistant calendar interface.
+
+### Image Entities
+
+| Entity | Description |
+|--------|-------------|
+| Latest Photo | Displays the most recent activity photo for each child |
+
+**Note**: Photos are fetched from activities and cached. The image updates when new photos are posted to DailyConnect.
 
 ## Troubleshooting
 

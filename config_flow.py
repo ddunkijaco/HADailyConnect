@@ -71,10 +71,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         data=user_input,
                     )
 
-            except aiohttp.ClientError:
+            except aiohttp.ClientError as err:
+                _LOGGER.error("Cannot connect to DailyConnect: %s", err)
                 errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except (ValueError, KeyError) as err:
+                _LOGGER.error("Invalid response from DailyConnect: %s", err)
+                errors["base"] = "invalid_auth"
+            except Exception as err:
+                _LOGGER.exception("Unexpected exception during setup: %s", err)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
@@ -97,7 +101,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            assert self._reauth_entry is not None
+            if self._reauth_entry is None:
+                return self.async_abort(reason="reauth_failed")
             email = self._reauth_entry.data[CONF_EMAIL]
 
             try:
@@ -121,10 +126,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     return self.async_abort(reason="reauth_successful")
 
-            except aiohttp.ClientError:
+            except aiohttp.ClientError as err:
+                _LOGGER.error("Cannot connect to DailyConnect: %s", err)
                 errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except (ValueError, KeyError) as err:
+                _LOGGER.error("Invalid response from DailyConnect: %s", err)
+                errors["base"] = "invalid_auth"
+            except Exception as err:
+                _LOGGER.exception("Unexpected exception during setup: %s", err)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
