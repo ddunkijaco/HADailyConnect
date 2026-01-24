@@ -30,6 +30,32 @@ class DailyConnectSensorEntityDescription(SensorEntityDescription):
     icon_fn: Callable[[dict[str, Any]], str] | None = None
 
 
+# Activity category codes
+CAT_POTTY = 2300
+CAT_MEDICATION = 1500
+CAT_NEED = 3000
+
+
+def _count_activities_by_cat(data: dict[str, Any], cat: int) -> int:
+    """Count activities by category code."""
+    activities = data.get("status", {}).get("list", [])
+    return sum(1 for a in activities if a.get("Cat") == cat)
+
+
+def _get_activities_by_cat(data: dict[str, Any], cat: int) -> list[dict[str, Any]]:
+    """Get all activities of a specific category."""
+    activities = data.get("status", {}).get("list", [])
+    return [a for a in activities if a.get("Cat") == cat]
+
+
+def _get_last_activity_time_by_cat(data: dict[str, Any], cat: int) -> str | None:
+    """Get the timestamp of the last activity of a category."""
+    activities = _get_activities_by_cat(data, cat)
+    if activities:
+        return activities[-1].get("Utm")
+    return None
+
+
 # Sleep sensors
 SLEEP_SENSORS = [
     DailyConnectSensorEntityDescription(
@@ -174,12 +200,90 @@ ACTIVITY_SENSOR = DailyConnectSensorEntityDescription(
     else None,
 )
 
+# Potty sensors (for potty training)
+POTTY_SENSORS = [
+    DailyConnectSensorEntityDescription(
+        key="potty_count",
+        translation_key="potty_count",
+        name="Potty Count",
+        icon="mdi:toilet",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="times",
+        value_fn=lambda data: _count_activities_by_cat(data, CAT_POTTY),
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_potty",
+        translation_key="last_potty",
+        name="Last Potty",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: _get_last_activity_time_by_cat(data, CAT_POTTY),
+    ),
+]
+
+# Medication sensors
+MEDICATION_SENSORS = [
+    DailyConnectSensorEntityDescription(
+        key="medication_count",
+        translation_key="medication_count",
+        name="Medication Count",
+        icon="mdi:pill",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement="doses",
+        value_fn=lambda data: _count_activities_by_cat(data, CAT_MEDICATION),
+        attributes_fn=lambda data: {
+            "medications_today": [
+                {
+                    "time": med.get("Utm", ""),
+                    "description": med.get("Txt", ""),
+                }
+                for med in _get_activities_by_cat(data, CAT_MEDICATION)
+            ]
+        }
+        if _get_activities_by_cat(data, CAT_MEDICATION)
+        else None,
+    ),
+    DailyConnectSensorEntityDescription(
+        key="last_medication",
+        translation_key="last_medication",
+        name="Last Medication",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda data: _get_last_activity_time_by_cat(data, CAT_MEDICATION),
+    ),
+]
+
+# Needs/requests sensor
+NEEDS_SENSOR = DailyConnectSensorEntityDescription(
+    key="needs_count",
+    translation_key="needs_count",
+    name="Needs",
+    icon="mdi:hand-extended",
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    native_unit_of_measurement="items",
+    value_fn=lambda data: _count_activities_by_cat(data, CAT_NEED),
+    attributes_fn=lambda data: {
+        "needs_today": [
+            {
+                "time": need.get("Utm", ""),
+                "description": need.get("Txt", ""),
+            }
+            for need in _get_activities_by_cat(data, CAT_NEED)
+        ]
+    }
+    if _get_activities_by_cat(data, CAT_NEED)
+    else None,
+)
+
 # All kid sensors
 KID_SENSORS = [
     *SLEEP_SENSORS,
     *FEEDING_SENSORS,
     *DIAPER_SENSORS,
     ACTIVITY_SENSOR,
+    *POTTY_SENSORS,
+    *MEDICATION_SENSORS,
+    NEEDS_SENSOR,
 ]
 
 

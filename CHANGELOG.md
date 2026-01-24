@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-01-23
+
+### Added
+- **Potty Sensors**: Track potty training with count and last potty time
+- **Medication Sensors**: Track medications given with count, last dose time, and list of medications today
+- **Needs Sensor**: Track daycare needs/requests (e.g., "Need: Pants", "Need: Shirts") with list in attributes
+
 ## [2.0.2] - 2026-01-23
 
 ### Fixed
