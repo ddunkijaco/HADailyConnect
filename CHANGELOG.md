@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-01-23
+
+### Fixed
+- Bottle volume sensor now uses valid unit `fl. oz.` instead of `oz` for volume device class
+
 ## [2.0.0] - 2026-01-23
 
 ### Added

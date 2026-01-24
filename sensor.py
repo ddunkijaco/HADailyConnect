@@ -90,7 +90,7 @@ FEEDING_SENSORS = [
         icon="mdi:baby-bottle-outline",
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        native_unit_of_measurement="oz",
+        native_unit_of_measurement="fl. oz.",
         value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("totalBottleSize", 0),
     ),
     DailyConnectSensorEntityDescription(
