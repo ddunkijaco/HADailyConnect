@@ -152,9 +152,8 @@ class DailyConnectAPI:
                 timeout=timeout,
             ) as response:
                 if response.status == 200:
-                    content = await response.text()
-                    _LOGGER.debug("User info response: %s", content[:500])  # Log first 500 chars
                     result = await response.json(content_type=None)
+                    _LOGGER.debug("User info response: %s", str(result)[:500])  # Log first 500 chars
 
                     # Validate response structure
                     if not isinstance(result, dict):
@@ -195,10 +194,8 @@ class DailyConnectAPI:
                 timeout=timeout,
             ) as response:
                 if response.status == 200:
-                    content = await response.text()
-                    _LOGGER.debug("Kid summary response for %s: %s", kid_id, content[:500])
                     result = await response.json(content_type=None)
-                    _LOGGER.debug("Kid summary parsed for %s: %s", kid_id, result)
+                    _LOGGER.debug("Kid summary response for %s: %s", kid_id, str(result)[:500])
 
                     # Validate response structure
                     if not isinstance(result, dict):
@@ -239,10 +236,8 @@ class DailyConnectAPI:
                 timeout=timeout,
             ) as response:
                 if response.status == 200:
-                    content = await response.text()
-                    _LOGGER.debug("Kid status response for %s: %s", kid_id, content[:500])
                     result = await response.json(content_type=None)
-                    _LOGGER.debug("Kid status parsed for %s: %s", kid_id, result)
+                    _LOGGER.debug("Kid status response for %s: %s", kid_id, str(result)[:500])
 
                     # Validate response structure
                     if not isinstance(result, dict):

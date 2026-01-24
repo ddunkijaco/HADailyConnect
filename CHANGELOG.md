@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.2] - 2026-01-23
+
+### Fixed
+- Critical: Fixed double response body read in API that caused empty data for user info, kid summary, and kid status endpoints
+
 ## [2.0.1] - 2026-01-23
 
 ### Fixed
