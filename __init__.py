@@ -113,7 +113,7 @@ class DailyConnectDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Fetch all kids data in parallel
             async def fetch_kid_data(kid):
-                kid_id = kid["Id"]
+                kid_id = str(kid["Id"])  # Always use string for consistent key type
                 kid_name = kid["Name"]
 
                 # Fetch summary and status in parallel
