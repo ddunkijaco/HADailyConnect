@@ -175,7 +175,7 @@ class DailyConnectAPI:
             raise ValueError("Not authenticated")
 
         if date is None:
-            date = datetime.now(timezone.utc)
+            date = datetime.now()  # Use local time, not UTC
 
         # Format date as 'yymmdd'
         pdt = date.strftime("%y%m%d")
@@ -217,7 +217,7 @@ class DailyConnectAPI:
             raise ValueError("Not authenticated")
 
         if date is None:
-            date = datetime.now(timezone.utc)
+            date = datetime.now()  # Use local time, not UTC
 
         # Format date as 'yymmdd'
         pdt = date.strftime("%y%m%d")
