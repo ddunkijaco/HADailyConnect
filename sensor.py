@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -19,6 +20,49 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import DailyConnectDataUpdateCoordinator
 from .const import DOMAIN
+
+
+def _parse_dailyconnect_timestamp(timestamp_str: str | None, tz_offset: int | None = None) -> datetime | None:
+    """Parse DailyConnect timestamp format to datetime.
+
+    DailyConnect returns timestamps like "1/26/2026 14:20" (M/D/YYYY HH:MM).
+    The tz_offset is provided as hours (e.g., -6 for CST).
+    """
+    if not timestamp_str:
+        return None
+
+    try:
+        # Parse the M/D/YYYY HH:MM format
+        dt = datetime.strptime(timestamp_str, "%m/%d/%Y %H:%M")
+
+        # Apply timezone if provided
+        if tz_offset is not None:
+            tz = timezone(timedelta(hours=tz_offset))
+            dt = dt.replace(tzinfo=tz)
+
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def _get_timestamp_with_tz(data: dict[str, Any], time_key: str, tz_key: str) -> datetime | None:
+    """Get a timestamp value with its associated timezone."""
+    summary = data.get("summary", {}).get("summary", {})
+    timestamp_str = summary.get(time_key)
+    tz_offset = summary.get(tz_key)
+    return _parse_dailyconnect_timestamp(timestamp_str, tz_offset)
+
+
+def _format_utm_time(utm: int | None) -> str | None:
+    """Convert Utm time (HHMM integer) to HH:MM string."""
+    if utm is None:
+        return None
+    try:
+        hours = utm // 100
+        minutes = utm % 100
+        return f"{hours:02d}:{minutes:02d}"
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -94,7 +138,7 @@ SLEEP_SENSORS = [
         name="Last Sleep",
         icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastSleeping"),
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastSleeping", "tzLastSleeping"),
     ),
 ]
 
@@ -125,7 +169,7 @@ FEEDING_SENSORS = [
         name="Last Bottle",
         icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastBottle"),
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastBottle", "tzLastBottle"),
     ),
     DailyConnectSensorEntityDescription(
         key="last_food",
@@ -133,7 +177,7 @@ FEEDING_SENSORS = [
         name="Last Food",
         icon="mdi:food",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastFood"),
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastFood", "tzLastFood"),
     ),
 ]
 
@@ -172,7 +216,7 @@ DIAPER_SENSORS = [
         name="Last Diaper",
         icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("timeOfLastDiaper"),
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastDiaper", "tzLastDiaper"),
     ),
 ]
 
@@ -209,7 +253,7 @@ POTTY_SENSORS = [
         icon="mdi:toilet",
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement="times",
-        value_fn=lambda data: _count_activities_by_cat(data, CAT_POTTY),
+        value_fn=lambda data: data.get("summary", {}).get("summary", {}).get("nrOfPotty", 0),
     ),
     DailyConnectSensorEntityDescription(
         key="last_potty",
@@ -217,7 +261,7 @@ POTTY_SENSORS = [
         name="Last Potty",
         icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: _get_last_activity_time_by_cat(data, CAT_POTTY),
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastPotty", "tzLastPotty"),
     ),
 ]
 
@@ -248,8 +292,7 @@ MEDICATION_SENSORS = [
         translation_key="last_medication",
         name="Last Medication",
         icon="mdi:clock-outline",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: _get_last_activity_time_by_cat(data, CAT_MEDICATION),
+        value_fn=lambda data: _format_utm_time(_get_last_activity_time_by_cat(data, CAT_MEDICATION)),
     ),
 ]
 
