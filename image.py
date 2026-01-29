@@ -78,12 +78,20 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "kids" in self.coordinator.data
-            and self._kid_id in self.coordinator.data["kids"]
+        last_update = self.coordinator.last_update_success
+        has_data = self.coordinator.data is not None
+        has_kids = "kids" in self.coordinator.data if has_data else False
+        kid_in_data = self._kid_id in self.coordinator.data["kids"] if has_kids else False
+
+        _LOGGER.debug(
+            "Image entity %s available check: last_update=%s, has_data=%s, has_kids=%s, "
+            "kid_id=%s, kid_in_data=%s, keys=%s",
+            self._kid_name, last_update, has_data, has_kids,
+            self._kid_id, kid_in_data,
+            list(self.coordinator.data["kids"].keys()) if has_kids else []
         )
+
+        return last_update and has_data and has_kids and kid_in_data
 
     def _get_kid_data(self) -> dict[str, Any] | None:
         """Get kid data from coordinator."""
