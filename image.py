@@ -110,15 +110,15 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
             return None
 
         # Iterate through activities in reverse to find the latest photo
+        # Photos can be attached to various activity types (Cat 1000, 700, 101, etc.)
         for activity in reversed(activities):
             if not isinstance(activity, dict):
                 continue
 
-            # Category 1000 indicates a photo activity
-            if activity.get("Cat") == 1000:
-                photo_id = activity.get("Photo")
-                if photo_id:
-                    return str(photo_id)
+            # Check if activity has a Photo field (any category can have photos)
+            photo_id = activity.get("Photo")
+            if photo_id:
+                return str(photo_id)
 
         return None
 
