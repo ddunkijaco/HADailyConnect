@@ -167,17 +167,15 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
     @property
     def image_last_updated(self) -> datetime | None:
         """Return the timestamp of the last image update."""
-        return self.coordinator.last_update_success_time
+        # Return current time if we have a photo, None otherwise
+        if self._get_latest_photo_id():
+            return datetime.now()
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
         photo_id = self._get_latest_photo_id()
         if photo_id:
-            return {
-                "photo_id": photo_id,
-                "last_update": self.coordinator.last_update_success_time.isoformat()
-                if self.coordinator.last_update_success_time
-                else None,
-            }
+            return {"photo_id": photo_id}
         return None

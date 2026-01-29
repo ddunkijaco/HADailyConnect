@@ -27,6 +27,7 @@ def _parse_dailyconnect_timestamp(timestamp_str: str | None, tz_offset: int | No
 
     DailyConnect returns timestamps like "1/26/2026 14:20" (M/D/YYYY HH:MM).
     The tz_offset is provided as hours (e.g., -6 for CST).
+    Home Assistant requires timezone-aware datetimes for TIMESTAMP sensors.
     """
     if not timestamp_str:
         return None
@@ -35,10 +36,12 @@ def _parse_dailyconnect_timestamp(timestamp_str: str | None, tz_offset: int | No
         # Parse the M/D/YYYY HH:MM format
         dt = datetime.strptime(timestamp_str, "%m/%d/%Y %H:%M")
 
-        # Apply timezone if provided
+        # Apply timezone - use provided offset or default to UTC
         if tz_offset is not None:
             tz = timezone(timedelta(hours=tz_offset))
-            dt = dt.replace(tzinfo=tz)
+        else:
+            tz = timezone.utc
+        dt = dt.replace(tzinfo=tz)
 
         return dt
     except (ValueError, TypeError):
