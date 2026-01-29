@@ -373,7 +373,7 @@ class DailyConnectKidSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._kid_id = kid_id
+        self._kid_id = str(kid_id)  # Ensure string type for consistent key matching
         self._kid_name = kid_name
         self._attr_name = f"{kid_name} {description.name}"
         self._attr_unique_id = f"{DOMAIN}_{kid_id}_{description.key}"
