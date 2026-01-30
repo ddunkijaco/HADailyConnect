@@ -53,6 +53,19 @@ def _get_timestamp_with_tz(data: dict[str, Any], time_key: str, tz_key: str) -> 
     summary = data.get("summary", {}).get("summary", {})
     timestamp_str = summary.get(time_key)
     tz_offset = summary.get(tz_key)
+
+    # If timezone offset is not found, try to find a fallback from other activities
+    if tz_offset is None:
+        # Try common timezone fields as fallbacks
+        fallback_tz_keys = [
+            "tzLastBottle", "tzLastFood", "tzLastPotty",
+            "tzLastDiaper", "tzLastSleep", "tzLastSleeping"
+        ]
+        for fallback_key in fallback_tz_keys:
+            tz_offset = summary.get(fallback_key)
+            if tz_offset is not None:
+                break
+
     return _parse_dailyconnect_timestamp(timestamp_str, tz_offset)
 
 
@@ -141,7 +154,8 @@ SLEEP_SENSORS = [
         name="Last Sleep",
         icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastSleeping", "tzLastSleeping"),
+        # Try tzLastSleep first (noun form like other activities), fallback handles alternatives
+        value_fn=lambda data: _get_timestamp_with_tz(data, "timeOfLastSleeping", "tzLastSleep"),
     ),
 ]
 
