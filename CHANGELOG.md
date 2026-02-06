@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - Unreleased
+
+### Changed
+- **Image Rotation**: Photo entity now rotates through all activity photos instead of showing only the latest
+- Photos rotate on each coordinator refresh (default: every 30 minutes)
+- New state attributes: `photo_index`, `total_photos` to track rotation position
+- Entity renamed from "Latest Photo" to "Photo" and icon changed to `mdi:image-multiple`
+- When new photos are added, rotation resets to show the newest photo first
+
 ## [2.1.0] - 2026-01-23
 
 ### Added
