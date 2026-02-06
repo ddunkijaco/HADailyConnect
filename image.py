@@ -31,9 +31,9 @@ async def async_setup_entry(
         for kid_id, kid_data in coordinator.data["kids"].items():
             kid_name = kid_data["name"]
 
-            # Create latest photo image entity for each kid
+            # Create rotating photo image entity for each kid
             entities.append(
-                DailyConnectLatestPhotoImage(
+                DailyConnectRotatingPhotoImage(
                     coordinator,
                     kid_id,
                     kid_name,
@@ -43,8 +43,8 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
-    """Represents the latest photo from DailyConnect activities."""
+class DailyConnectRotatingPhotoImage(CoordinatorEntity, ImageEntity):
+    """Represents a rotating photo display from DailyConnect activities."""
 
     _attr_content_type = "image/jpeg"
 
@@ -59,11 +59,14 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
         ImageEntity.__init__(self, coordinator.hass)
         self._kid_id = str(kid_id)  # Ensure string type for consistent key matching
         self._kid_name = kid_name
-        self._attr_name = f"{kid_name} Latest Photo"
-        self._attr_unique_id = f"{DOMAIN}_{kid_id}_latest_photo"
-        self._attr_icon = "mdi:image"
+        self._attr_name = f"{kid_name} Photo"
+        self._attr_unique_id = f"{DOMAIN}_{kid_id}_rotating_photo"
+        self._attr_icon = "mdi:image-multiple"
         self._cached_image: bytes | None = None
         self._current_photo_id: str | None = None
+        self._current_photo_index: int = 0
+        self._photo_ids: list[str] = []
+        self._last_photo_list_hash: int | None = None
 
     @property
     def device_info(self) -> dict[str, Any]:
@@ -103,22 +106,23 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
             return None
         return self.coordinator.data["kids"][self._kid_id]
 
-    def _get_latest_photo_id(self) -> str | None:
-        """Get the latest photo ID from activities."""
+    def _get_all_photo_ids(self) -> list[str]:
+        """Get all photo IDs from activities, newest first."""
         kid_data = self._get_kid_data()
         if not kid_data:
-            return None
+            return []
 
         status_data = kid_data.get("status", {})
         if not isinstance(status_data, dict):
-            return None
+            return []
 
         activities = status_data.get("list", [])
         if not isinstance(activities, list):
-            return None
+            return []
 
-        # Iterate through activities in reverse to find the latest photo
-        # Photos can be attached to various activity types (Cat 1000, 700, etc.)
+        photo_ids: list[str] = []
+        
+        # Iterate through activities in reverse to get newest first
         # Skip sign in (101) and sign out (102) photos
         for activity in reversed(activities):
             if not isinstance(activity, dict):
@@ -132,13 +136,47 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
             # Check if activity has a Photo field
             photo_id = activity.get("Photo")
             if photo_id:
-                return str(photo_id)
+                photo_ids.append(str(photo_id))
 
+        return photo_ids
+
+    def _update_photo_list_and_rotate(self) -> str | None:
+        """Update the photo list and rotate to the next photo."""
+        new_photo_ids = self._get_all_photo_ids()
+        
+        if not new_photo_ids:
+            self._photo_ids = []
+            self._current_photo_index = 0
+            return None
+
+        # Create a hash to detect if the photo list changed
+        new_hash = hash(tuple(new_photo_ids))
+        
+        if new_hash != self._last_photo_list_hash:
+            # Photo list changed - reset to start with newest
+            _LOGGER.debug(
+                "Photo list changed for %s: %d photos available",
+                self._kid_name, len(new_photo_ids)
+            )
+            self._photo_ids = new_photo_ids
+            self._last_photo_list_hash = new_hash
+            self._current_photo_index = 0
+        else:
+            # Same photo list - rotate to next photo
+            if self._photo_ids:
+                self._current_photo_index = (self._current_photo_index + 1) % len(self._photo_ids)
+                _LOGGER.debug(
+                    "Rotating to photo %d/%d for %s",
+                    self._current_photo_index + 1, len(self._photo_ids), self._kid_name
+                )
+
+        if self._photo_ids:
+            return self._photo_ids[self._current_photo_index]
         return None
 
     async def async_image(self) -> bytes | None:
         """Return bytes of image."""
-        photo_id = self._get_latest_photo_id()
+        photo_id = self._update_photo_list_and_rotate()
 
         # If no photo available, return None
         if not photo_id:
@@ -167,15 +205,19 @@ class DailyConnectLatestPhotoImage(CoordinatorEntity, ImageEntity):
     @property
     def image_last_updated(self) -> datetime | None:
         """Return the timestamp of the last image update."""
-        # Return current time if we have a photo, None otherwise
-        if self._get_latest_photo_id():
+        # Return current time if we have photos, None otherwise
+        if self._photo_ids:
             return datetime.now()
         return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra state attributes."""
-        photo_id = self._get_latest_photo_id()
-        if photo_id:
-            return {"photo_id": photo_id}
-        return None
+        if not self._photo_ids:
+            return None
+            
+        return {
+            "photo_id": self._photo_ids[self._current_photo_index] if self._photo_ids else None,
+            "photo_index": self._current_photo_index + 1,
+            "total_photos": len(self._photo_ids),
+        }
