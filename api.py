@@ -126,9 +126,8 @@ class DailyConnectAPI:
                     _LOGGER.error("Login failed with status: %s, response: %s", response.status, content[:200])
                     return False
 
-        except aiohttp.ClientError as err:
-            _LOGGER.error("Authentication failed due to network error: %s", err)
-            return False
+        except aiohttp.ClientError:
+            raise
         except Exception as err:
             _LOGGER.exception("Unexpected error during authentication: %s", err)
             return False
