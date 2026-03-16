@@ -66,9 +66,9 @@ class DailyConnectAPI:
     """API client for DailyConnect."""
 
     def __init__(
-        self, 
-        email: str, 
-        password: str, 
+        self,
+        email: str,
+        password: str,
         session: aiohttp.ClientSession | None = None
     ) -> None:
         """Initialize the API client."""
@@ -79,6 +79,15 @@ class DailyConnectAPI:
         self._headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
         }
+
+    @property
+    def is_authenticated(self) -> bool:
+        """Return True if we have a valid CSRF token."""
+        return self._srf_token is not None
+
+    def clear_auth(self) -> None:
+        """Clear the stored authentication token."""
+        self._srf_token = None
 
     async def authenticate(self) -> bool:
         """Authenticate with DailyConnect and extract the CSRF token."""

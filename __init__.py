@@ -95,65 +95,88 @@ class DailyConnectDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=update_interval),
         )
 
+    async def _async_ensure_authenticated(self) -> None:
+        """Authenticate if needed. Only raises ConfigEntryAuthFailed for bad credentials."""
+        if self.api.is_authenticated:
+            return
+        try:
+            auth_success = await self.api.authenticate()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise UpdateFailed(f"Cannot reach DailyConnect to authenticate: {err}") from err
+        if not auth_success:
+            raise ConfigEntryAuthFailed("Authentication failed — check credentials")
+
+    async def _async_fetch_data(self) -> dict:
+        """Fetch all data from the API. Returns the data dict."""
+        user_info = await self.api.get_user_info()
+
+        _LOGGER.debug("User info received: %s", user_info)
+
+        if not user_info or "myKids" not in user_info:
+            return None
+
+        kids_data = {}
+
+        async def fetch_kid_data(kid):
+            kid_id = str(kid["Id"])
+            kid_name = kid["Name"]
+
+            summary, status = await asyncio.gather(
+                self.api.get_kid_summary(kid_id),
+                self.api.get_kid_status(kid_id),
+            )
+
+            _LOGGER.debug(
+                "Kid %s (%s) - Summary: %s, Status: %s",
+                kid_name, kid_id, summary, status,
+            )
+
+            return kid_id, {
+                "name": kid_name,
+                "summary": summary,
+                "status": status,
+            }
+
+        results = await asyncio.gather(
+            *[fetch_kid_data(kid) for kid in user_info["myKids"]]
+        )
+
+        for kid_id, data in results:
+            kids_data[kid_id] = data
+
+        user_id = user_info.get("Id", "")
+        calendar_events = []
+        if user_id:
+            calendar_events = await self.api.get_calendar_events(user_id) or []
+
+        return {
+            "kids": kids_data,
+            "calendar": calendar_events,
+            "user_id": user_id,
+        }
+
     async def _async_update_data(self):
         """Update data via library."""
         try:
-            auth_success = await self.api.authenticate()
-            if not auth_success:
-                raise ConfigEntryAuthFailed("Authentication failed")
+            # Authenticate only if we don't already have a session token
+            await self._async_ensure_authenticated()
 
-            user_info = await self.api.get_user_info()
+            data = await self._async_fetch_data()
 
-            _LOGGER.debug("User info received: %s", user_info)
+            if data is not None:
+                return data
 
-            if not user_info or "myKids" not in user_info:
-                raise UpdateFailed("No kids data found")
+            # Data fetch returned None — session likely expired.
+            # Clear token and re-authenticate once before giving up.
+            _LOGGER.debug("Data fetch failed, re-authenticating")
+            self.api.clear_auth()
+            await self._async_ensure_authenticated()
 
-            kids_data = {}
+            data = await self._async_fetch_data()
+            if data is not None:
+                return data
 
-            # Fetch all kids data in parallel
-            async def fetch_kid_data(kid):
-                kid_id = str(kid["Id"])  # Always use string for consistent key type
-                kid_name = kid["Name"]
-
-                # Fetch summary and status in parallel
-                summary, status = await asyncio.gather(
-                    self.api.get_kid_summary(kid_id),
-                    self.api.get_kid_status(kid_id),
-                )
-
-                _LOGGER.debug(
-                    "Kid %s (%s) - Summary: %s, Status: %s",
-                    kid_name,
-                    kid_id,
-                    summary,
-                    status,
-                )
-
-                return kid_id, {
-                    "name": kid_name,
-                    "summary": summary,
-                    "status": status,
-                }
-
-            results = await asyncio.gather(
-                *[fetch_kid_data(kid) for kid in user_info["myKids"]]
-            )
-
-            for kid_id, data in results:
-                kids_data[kid_id] = data
-
-            # Fetch calendar events (use user ID from user_info)
-            user_id = user_info.get("Id", "")
-            calendar_events = []
-            if user_id:
-                calendar_events = await self.api.get_calendar_events(user_id) or []
-
-            return {
-                "kids": kids_data,
-                "calendar": calendar_events,
-                "user_id": user_id,
-            }
+            raise UpdateFailed("No kids data found after re-authentication")
 
         except ConfigEntryAuthFailed:
             raise
